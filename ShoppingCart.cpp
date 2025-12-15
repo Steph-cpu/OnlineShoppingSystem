@@ -7,6 +7,8 @@
 #include <fstream>
 #include <iostream>
 #include <numeric>
+#include <limits>
+#include <algorithm>
 using namespace std;
 
 // read size from user input and check if it is valid
