@@ -1,0 +1,8 @@
+8
+1,MenShirt_Eastern,0,0,199,9,20,30,40,50,0
+2,MenBoots_Western,0,1,499,0,0,0,0,0,14
+3,WomenDress_Eastern,1,0,299,5,9,8,6,3,0
+4,WomenAccessory_Other,1,2,99,0,0,0,0,0,100
+5,KidsToy_Boys,2,0,59,0,0,0,0,0,200
+6,KidsSkirt_Girls,2,1,149,2,3,4,2,1,0
+7,GiftCard,3,2,50,0,0,0,0,0,1000

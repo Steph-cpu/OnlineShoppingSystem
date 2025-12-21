@@ -3,7 +3,6 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>
 #include <optional>
 #include <iostream>
 #include <fstream>
@@ -11,72 +10,74 @@
 
 #include "ProductManager.h"
 #include "ShoppingCart.h"
+#include "Transaction.h"
 
 using namespace std;
 
 class User {
 public:
-    // ---------- basic data ----------
     int userID = 0;
     string username;
-    string password;     // 作业场景下明文存储即可；真实系统应哈希
-    int level = 1;       // 1..N
+    string password;
+    int level = 1;       // 1: Silver, 2: Gold, 3: Diamond
     bool isAdmin = false;
-    double totalSpent = 0.0; // 用于升级等级
+    double totalSpent = 0.0;
 
-    // 每个用户一个购物车
     ShoppingCart cart;
+    TransactionManager txm; // user context filtering
 
 public:
-    User() = default;
+    User() : txm(0) {}
+
     User(int id, string name, string pwd, int lvl, bool admin, double spent)
         : userID(id), username(std::move(name)), password(std::move(pwd)),
-          level(lvl), isAdmin(admin), totalSpent(spent) {}
+          level(lvl), isAdmin(admin), totalSpent(spent),
+          txm(id) {}
 
-    // -------------------- User file I/O (single file for all users) --------------------
-    // users file format (one line):
-    // userID|username|password|level|isAdmin(0/1)|totalSpent
     static string usersFileName() { return "users.txt"; }
 
     static bool loadAll(vector<User>& users, int& nextUserID, const string& filename = usersFileName());
     static bool saveAll(const vector<User>& users, int nextUserID, const string& filename = usersFileName());
 
-    // -------------------- Register / Login --------------------
-    // register: create a new user with unique userID and username
     static bool registerUser(vector<User>& users, int& nextUserID,
                              const string& username, const string& password,
                              bool isAdmin = false);
 
-    // login: return pointer to user in users vector (so you can modify and save back)
     static User* login(vector<User>& users, const string& username, const string& password);
 
-    // -------------------- Cart binding --------------------
+    // Forgot password
+    static bool resetPassword(vector<User>& users,
+                              const string& username,
+                              const string& newPassword);
+
+    // cart file per user
     string cartFileName() const { return ShoppingCart::getShoppingCartFileName(userID); }
     bool loadCartFromFile();
     bool saveCartToFile() const;
 
-    // -------------------- Discount / Level --------------------
-    double discountRate() const;          // e.g. 0.95 means 5% off
-    void updateLevelBySpent();            // based on totalSpent
+    // discounts (Silver/Gold/Diamond only)
+    double discountRate() const;
+    static string levelName(int lvl) {
+        if (lvl <= 1) return "Silver";
+        if (lvl == 2) return "Gold";
+        return "Diamond";
+    }
+    void updateLevelBySpent();
 
-    // -------------------- Helper actions delegating to ShoppingCart --------------------
+    // cart operations
     void addToCart(int productID, const ProductManager& pm) { cart.addItem(productID, pm); }
     void updateCartItem(int productID, const ProductManager& pm) { cart.updateItem(productID, pm); }
     void removeFromCart(int productID) { cart.removeItem(productID); }
     void showCart(const ProductManager& pm) const { cart.displayCart(pm); }
     void clearCart() { cart.clearCart(); }
 
-    // -------------------- Checkout (simple version; can be replaced by Transaction class) --------------------
-    // behavior:
-    // 1) check stock for every item in cart
-    // 2) deduct stock from ProductManager
-    // 3) compute total & apply discount
-    // 4) append a simple record to user's transaction file
-    // 5) clear cart + save cart + update user spent/level
+    // checkout via TransactionManager
     bool checkout(ProductManager& pm);
 
-    // user transaction record file (one user one file)
-    string transactionFileName() const { return "tx_" + to_string(userID) + ".txt"; }
+    // transaction displays (filtered)
+    void displayTransactionSummary() { ensureTxmBound(); txm.displayTransactionSummary(); }
+    void displayAllTransactions()    { ensureTxmBound(); txm.displayAllTransactions(); }
+    void displayTransaction(int txID){ ensureTxmBound(); txm.displayTransaction(txID); }
 
 private:
     static bool isUsernameValid(const string& name);
@@ -86,9 +87,11 @@ private:
     static string toUserLine(const User& u);
 
     static bool usernameExists(const vector<User>& users, const string& username);
-
-    // Safe split by delimiter
     static vector<string> split(const string& s, char delim);
+
+    void ensureTxmBound() {
+        if (txm.getUserID() != userID) txm.setUserID(userID);
+    }
 };
 
 #endif // ASSIGNMENT2_USER_H

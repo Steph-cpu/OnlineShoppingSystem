@@ -2,7 +2,6 @@
 #include <string>
 #include <vector>
 #include <limits>
-#include <fstream>
 
 #include "ProductManager.h"
 #include "ShoppingCart.h"
@@ -80,7 +79,6 @@ static Section chooseSection(Category cat) {
         cout << "Section is fixed to Other for Category=Other.\n";
         return Section::Other;
     }
-    // Men / Women
     cout << "Choose Section:\n";
     cout << "  0) Eastern\n  1) Western\n  2) Other\n";
     int s = readInt("Enter: ", 0, 2);
@@ -107,10 +105,46 @@ static void showUserInfo(const User& u) {
     cout << "\n=== User Info ===\n";
     cout << "userID: " << u.userID << "\n";
     cout << "username: " << u.username << "\n";
-    cout << "level: " << u.level << "\n";
+    cout << "level: " << User::levelName(u.level) << "\n";
     cout << "isAdmin: " << (u.isAdmin ? "Yes" : "No") << "\n";
     cout << "totalSpent: " << u.totalSpent << "\n";
     cout << "discountRate: " << u.discountRate() << "\n";
+}
+
+// -------------------- admin transaction view (NEW) --------------------
+static void adminTransactionsMenu() {
+    TransactionManager adminTM(-1); // -1 => no filter, view all
+    adminTM.loadFromFile();
+
+    while (true) {
+        cout << "\n===== ADMIN: TRANSACTION RECORDS =====\n";
+        cout << "1) Summary (all users)\n";
+        cout << "2) Show all invoices (all users)\n";
+        cout << "3) Show one invoice by Transaction ID\n";
+        cout << "0) Back\n";
+
+        int op = readInt("Choose: ", 0, 3);
+        if (op == 0) return;
+
+        switch (op) {
+            case 1:
+                adminTM.displayTransactionSummary();
+                pauseEnter();
+                break;
+            case 2:
+                adminTM.displayAllTransactions();
+                pauseEnter();
+                break;
+            case 3: {
+                int txid = readInt("Enter Transaction ID: ", 1, 1000000000);
+                adminTM.displayTransaction(txid);
+                pauseEnter();
+                break;
+            }
+            default:
+                break;
+        }
+    }
 }
 
 // -------------------- admin menu actions --------------------
@@ -131,18 +165,14 @@ static void adminMenu(ProductManager& pm) {
         cout << "10) Update product category/section\n";
         cout << "11) Save products to file\n";
         cout << "12) Load products from file\n";
+        cout << "13) View transaction records (TransactionRecord.txt)\n"; // NEW
         cout << "0) Back\n";
 
-        int op = readInt("Choose: ", 0, 12);
-
+        int op = readInt("Choose: ", 0, 13);
         if (op == 0) return;
 
         switch (op) {
-            case 1: {
-                pm.displayAllProducts();
-                pauseEnter();
-                break;
-            }
+            case 1: pm.displayAllProducts(); pauseEnter(); break;
             case 2: {
                 Category cat = chooseCategory();
                 pm.displayByCategory(cat);
@@ -167,7 +197,7 @@ static void adminMenu(ProductManager& pm) {
                 Category cat = chooseCategory();
                 Section sec = chooseSection(cat);
                 double price = readDouble("Enter price: ", 0.0);
-                int newID = pm.addProduct(name, cat, sec, price); // will prompt stock inside
+                int newID = pm.addProduct(name, cat, sec, price);
                 cout << "addProduct result ID = " << newID << "\n";
                 pauseEnter();
                 break;
@@ -196,9 +226,8 @@ static void adminMenu(ProductManager& pm) {
                     break;
                 }
                 Size sz = Size::None;
-                if (p->getHasSize()) {
-                    sz = chooseSizeXSXL();
-                } else {
+                if (p->getHasSize()) sz = chooseSizeXSXL();
+                else {
                     cout << "This product has no sizes; using None.\n";
                     sz = Size::None;
                 }
@@ -237,6 +266,37 @@ static void adminMenu(ProductManager& pm) {
                 pauseEnter();
                 break;
             }
+            case 13: {
+                adminTransactionsMenu();
+                break;
+            }
+            default:
+                break;
+        }
+    }
+}
+
+// -------------------- transaction menu (user) --------------------
+static void showTransactionsMenu(User& u) {
+    while (true) {
+        cout << "\n===== MY TRANSACTIONS =====\n";
+        cout << "1) Summary (brief)\n";
+        cout << "2) Show all (full invoices)\n";
+        cout << "3) Show one by Transaction ID\n";
+        cout << "0) Back\n";
+
+        int op = readInt("Choose: ", 0, 3);
+        if (op == 0) return;
+
+        switch (op) {
+            case 1: u.displayTransactionSummary(); pauseEnter(); break;
+            case 2: u.displayAllTransactions(); pauseEnter(); break;
+            case 3: {
+                int txid = readInt("Enter Transaction ID: ", 1, 1000000000);
+                u.displayTransaction(txid);
+                pauseEnter();
+                break;
+            }
             default:
                 break;
         }
@@ -244,21 +304,7 @@ static void adminMenu(ProductManager& pm) {
 }
 
 // -------------------- user menu actions --------------------
-static void showTransactionFile(const User& u) {
-    ifstream fin(u.transactionFileName());
-    cout << "\n=== Transaction Records (" << u.transactionFileName() << ") ===\n";
-    if (!fin.is_open()) {
-        cout << "(No transaction file yet.)\n";
-        return;
-    }
-    string line;
-    while (getline(fin, line)) {
-        cout << line << "\n";
-    }
-}
-
 static void userMenu(User& u, ProductManager& pm) {
-    // 登录后加载购物车
     u.loadCartFromFile();
 
     while (true) {
@@ -279,18 +325,13 @@ static void userMenu(User& u, ProductManager& pm) {
         int op = readInt("Choose: ", 0, 11);
 
         if (op == 0) {
-            // 退出前保存购物车
             u.saveCartToFile();
             cout << "Logged out.\n";
             return;
         }
 
         switch (op) {
-            case 1: {
-                pm.displayAllProducts();
-                pauseEnter();
-                break;
-            }
+            case 1: pm.displayAllProducts(); pauseEnter(); break;
             case 2: {
                 Category cat = chooseCategory();
                 pm.displayByCategory(cat);
@@ -312,14 +353,14 @@ static void userMenu(User& u, ProductManager& pm) {
             }
             case 5: {
                 int id = readInt("Enter productID to add: ", 1, 1000000000);
-                u.addToCart(id, pm);     // ShoppingCart will prompt quantity/size
+                u.addToCart(id, pm);
                 u.saveCartToFile();
                 pauseEnter();
                 break;
             }
             case 6: {
                 int id = readInt("Enter productID to update: ", 1, 1000000000);
-                u.updateCartItem(id, pm); // ShoppingCart will prompt
+                u.updateCartItem(id, pm);
                 u.saveCartToFile();
                 pauseEnter();
                 break;
@@ -331,30 +372,18 @@ static void userMenu(User& u, ProductManager& pm) {
                 pauseEnter();
                 break;
             }
-            case 8: {
-                u.showCart(pm);
-                pauseEnter();
-                break;
-            }
+            case 8: u.showCart(pm); pauseEnter(); break;
             case 9: {
-                bool ok = u.checkout(pm); // deduct stock + write tx + clear cart
-                if (ok) {
-                    // checkout 成功后建议及时保存 products
-                    cout << "Tip: Ask admin to save products to file if you want persistence.\n";
-                }
+                bool ok = u.checkout(pm);
+                if (ok) cout << "Checkout finished.\n";
                 pauseEnter();
                 break;
             }
             case 10: {
-                showTransactionFile(u);
-                pauseEnter();
+                showTransactionsMenu(u);
                 break;
             }
-            case 11: {
-                showUserInfo(u);
-                pauseEnter();
-                break;
-            }
+            case 11: showUserInfo(u); pauseEnter(); break;
             default:
                 break;
         }
@@ -366,7 +395,6 @@ int main() {
     ProductManager pm;
     const string productFile = "products.txt";
 
-    // 尝试加载 products（没有文件也没关系）
     pm.loadFromFile(productFile);
 
     vector<User> users;
@@ -377,10 +405,11 @@ int main() {
         cout << "\n===== ONLINE SHOPPING SYSTEM =====\n";
         cout << "1) Register\n";
         cout << "2) Login\n";
-        cout << "3) Admin Login (uses normal login; must be admin)\n";
-        cout << "4) Save & Exit\n";
+        cout << "3) Forgot password\n"; // NEW
+        cout << "4) Admin Login (uses normal login; must be admin)\n";
+        cout << "5) Save & Exit\n";
 
-        int op = readInt("Choose: ", 1, 4);
+        int op = readInt("Choose: ", 1, 5);
 
         if (op == 1) {
             string name = readLine("Username: ");
@@ -394,38 +423,41 @@ int main() {
             string name = readLine("Username: ");
             string pwd  = readLine("Password: ");
             User* u = User::login(users, name, pwd);
-            if (!u) {
+            if (!u) { pauseEnter(); continue; }
+
+            if (u->isAdmin) {
+                cout << "This is an admin account. Please use Admin Login option.\n";
                 pauseEnter();
                 continue;
             }
-            // 普通用户也可以进入 userMenu（管理员也可以）
-            userMenu(*u, pm);
 
-            // userMenu 里 checkout 可能更新 totalSpent/level，所以要保存 users
+            userMenu(*u, pm);
             User::saveAll(users, nextUserID);
             pauseEnter();
         }
         else if (op == 3) {
+            string name = readLine("Enter username: ");
+            string newPwd = readLine("Enter new password (min 4 chars): ");
+            bool ok = User::resetPassword(users, name, newPwd);
+            if (ok) User::saveAll(users, nextUserID);
+            pauseEnter();
+        }
+        else if (op == 4) {
             string name = readLine("Admin username: ");
             string pwd  = readLine("Admin password: ");
             User* u = User::login(users, name, pwd);
-            if (!u) {
-                pauseEnter();
-                continue;
-            }
+            if (!u) { pauseEnter(); continue; }
             if (!u->isAdmin) {
                 cout << "Access denied: not an admin.\n";
                 pauseEnter();
                 continue;
             }
             adminMenu(pm);
-
-            // 管理员操作完 products，建议保存
             pm.saveToFile(productFile);
+            User::saveAll(users, nextUserID);
             pauseEnter();
         }
-        else if (op == 4) {
-            // 保存并退出
+        else if (op == 5) {
             User::saveAll(users, nextUserID);
             pm.saveToFile(productFile);
             cout << "Saved. Bye!\n";

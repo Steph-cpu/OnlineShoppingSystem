@@ -6,6 +6,7 @@
 #include <map>
 #include <optional>
 #include <ctime>
+
 #include "Product.h"
 #include "ProductManager.h"
 #include "ShoppingCart.h"
@@ -30,7 +31,7 @@ struct TransactionItem {
 // Complete transaction record
 class Transaction {
 private:
-    int transactionID;              // transaction ID (unique per user)
+    int transactionID;              // transaction ID (global unique in TransactionRecord.txt)
     int userID;                     // user ID
     vector<TransactionItem> items;  // list of purchased items
     double rawTotal;                // original total price
@@ -63,31 +64,37 @@ public:
     static optional<Transaction> deserialize(const vector<string>& lines);
 };
 
-// Transaction manager (handles all transactions for a single user)
+// Transaction manager (handles all transactions; userID used for filtering/display)
+// userID >= 1 : user view (filter own records)
+// userID == -1: admin view (no filter)
 class TransactionManager {
 private:
-    int userID;
-    int nextTransactionID;              // next transaction ID
-    vector<Transaction> transactions;   // all transaction records
+    int userID;                         // current user context (or -1 for admin)
+    int nextTransactionID;              // next transaction ID (global)
+    vector<Transaction> transactions;   // all loaded transaction records
 
-    // Generate transaction file name based on userID
+    // Global transaction record file name (requirement)
     string getFileName() const;
 
     // Get current timestamp string
     static string getCurrentTimestamp();
 
-    // Get discount rate based on user level
+    // Get discount rate based on user level (Silver/Gold/Diamond only)
     static double getDiscountRate(int level, bool isAdmin);
 
-    // Get level name string
+    // Get level name string (Silver/Gold/Diamond only)
     static string getLevelName(int level);
+
+    bool allowTx(const Transaction& tx) const {
+        return (userID == -1) || (tx.getUserID() == userID);
+    }
 
 public:
     // Constructors
     TransactionManager();
     explicit TransactionManager(int uID);
 
-    // Set user ID
+    // Set user ID context
     void setUserID(int uID);
     int getUserID() const { return userID; }
 
@@ -97,45 +104,39 @@ public:
 
     // Check if stock is sufficient, return shortage info
     // Returns: map<productID, vector<pair<size, shortage>>>
-    map<int, vector<pair<Size, int>>> checkStock(const ShoppingCart& cart, 
-                                                  const ProductManager& pm) const;
+    map<int, vector<pair<Size, int>>> checkStock(const ShoppingCart& cart,
+                                                 const ProductManager& pm) const;
 
     // Check and resolve stock issues (interactive)
     // Returns true if checkout can proceed, false if user cancels
     bool checkAndResolveStock(ShoppingCart& cart, ProductManager& pm);
 
-    // Process transaction
-    // Parameters: cart-shopping cart, pm-product manager, userLevel, isAdmin
-    // Returns: whether transaction was successful
-    bool processTransaction(ShoppingCart& cart, ProductManager& pm, 
-                           int userLevel, bool isAdmin);
+    // Process transaction (checkout)
+    bool processTransaction(ShoppingCart& cart, ProductManager& pm,
+                            int userLevel, bool isAdmin);
 
-    // Display all transaction records
+    // Display (filtered by userID unless admin)
     void displayAllTransactions() const;
-
-    // Display transaction summary (brief version)
     void displayTransactionSummary() const;
 
-    // Find transaction by ID
+    // Find (filtered by userID unless admin)
     const Transaction* findTransaction(int transactionID) const;
-    
-    // Display details of a specific transaction
     void displayTransaction(int transactionID) const;
 
-    // Find transactions by date range
-    vector<const Transaction*> findByDateRange(const string& startDate, 
-                                                const string& endDate) const;
+    // Find transactions by date range (filtered by userID unless admin)
+    vector<const Transaction*> findByDateRange(const string& startDate,
+                                               const string& endDate) const;
 
-    // Find transactions by amount range
-    vector<const Transaction*> findByAmountRange(double minAmount, 
-                                                  double maxAmount) const;
+    // Find transactions by amount range (filtered by userID unless admin)
+    vector<const Transaction*> findByAmountRange(double minAmount,
+                                                 double maxAmount) const;
 
-    // Get transaction statistics
-    int getTransactionCount() const { return static_cast<int>(transactions.size()); }
+    // Stats (filtered by userID unless admin)
+    int getTransactionCount() const;
     double getTotalSpent() const;
     double getAverageSpent() const;
 
-    // Get all transactions (read-only)
+    // Get all transactions (read-only; NOTE: contains all loaded txs)
     const vector<Transaction>& getAllTransactions() const { return transactions; }
 };
 

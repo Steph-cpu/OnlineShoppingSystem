@@ -1,39 +1,32 @@
 #include "User.h"
+#include <algorithm>
 
 // -------------------- small utilities --------------------
 vector<string> User::split(const string& s, char delim) {
     vector<string> out;
     string cur;
     for (char c : s) {
-        if (c == delim) {
-            out.push_back(cur);
-            cur.clear();
-        } else {
-            cur.push_back(c);
-        }
+        if (c == delim) { out.push_back(cur); cur.clear(); }
+        else cur.push_back(c);
     }
     out.push_back(cur);
     return out;
 }
 
 bool User::isUsernameValid(const string& name) {
-    // 你 README 对 productName 限制更严格；userName 这里给一个温和规则：
-    // 非空、不能包含分隔符 '|'
     if (name.empty()) return false;
     if (name.find('|') != string::npos) return false;
     return true;
 }
 
 bool User::isPasswordValid(const string& pwd) {
-    if (pwd.size() < 4) return false;          // 作业里最低 4
+    if (pwd.size() < 4) return false;
     if (pwd.find('|') != string::npos) return false;
     return true;
 }
 
 bool User::usernameExists(const vector<User>& users, const string& username) {
-    for (const auto& u : users) {
-        if (u.username == username) return true;
-    }
+    for (const auto& u : users) if (u.username == username) return true;
     return false;
 }
 
@@ -52,7 +45,10 @@ optional<User> User::parseUserLine(const string& line) {
 
         if (id <= 0) return nullopt;
         if (!isUsernameValid(name) || !isPasswordValid(pwd)) return nullopt;
+
+        // clamp level to 1..3
         if (lvl < 1) lvl = 1;
+        if (lvl > 3) lvl = 3;
         if (spent < 0) spent = 0;
 
         return User(id, name, pwd, lvl, admin, spent);
@@ -73,30 +69,22 @@ bool User::loadAll(vector<User>& users, int& nextUserID, const string& filename)
     users.clear();
     nextUserID = 1;
 
-    if (!fin.is_open()) {
-        // 文件不存在也算“正常”：第一次运行
-        return true;
-    }
+    if (!fin.is_open()) return true;
 
-    // first line: nextUserID
     string first;
     if (!getline(fin, first)) return true;
     if (!first.empty()) {
         try {
             nextUserID = stoi(first);
             if (nextUserID < 1) nextUserID = 1;
-        } catch (...) {
-            nextUserID = 1;
-        }
+        } catch (...) { nextUserID = 1; }
     }
 
     string line;
     while (getline(fin, line)) {
         if (line.empty()) continue;
         auto u = parseUserLine(line);
-        if (u.has_value()) {
-            users.push_back(*u);
-        }
+        if (u.has_value()) users.push_back(*u);
     }
     return true;
 }
@@ -108,9 +96,7 @@ bool User::saveAll(const vector<User>& users, int nextUserID, const string& file
         return false;
     }
     fout << nextUserID << "\n";
-    for (const auto& u : users) {
-        fout << toUserLine(u) << "\n";
-    }
+    for (const auto& u : users) fout << toUserLine(u) << "\n";
     return true;
 }
 
@@ -140,6 +126,7 @@ bool User::registerUser(vector<User>& users, int& nextUserID,
 User* User::login(vector<User>& users, const string& username, const string& password) {
     for (auto& u : users) {
         if (u.username == username && u.password == password) {
+            u.ensureTxmBound();
             cout << "Login success. userID=" << u.userID
                  << (u.isAdmin ? " (Admin)" : "") << endl;
             return &u;
@@ -147,6 +134,25 @@ User* User::login(vector<User>& users, const string& username, const string& pas
     }
     cout << "Login failed: wrong username or password." << endl;
     return nullptr;
+}
+
+// Forgot password (simple recovery)
+bool User::resetPassword(vector<User>& users,
+                         const string& username,
+                         const string& newPassword) {
+    if (!isPasswordValid(newPassword)) {
+        cout << "Reset failed: invalid password (min length 4)." << endl;
+        return false;
+    }
+    for (auto& u : users) {
+        if (u.username == username) {
+            u.password = newPassword;
+            cout << "Password reset success for username: " << username << endl;
+            return true;
+        }
+    }
+    cout << "Reset failed: username not found." << endl;
+    return false;
 }
 
 // -------------------- Cart file binding --------------------
@@ -160,123 +166,58 @@ bool User::saveCartToFile() const {
 
 // -------------------- Discount / Level --------------------
 double User::discountRate() const {
-    // 简单等级折扣：你可随意改成作业要求的规则
-    // level 1: 100%
-    // level 2: 98%
-    // level 3: 95%
-    // level 4+: 90%
-    if (isAdmin) return 0.80;          // 管理员演示：更低折扣（可删）
-    if (level <= 1) return 1.00;
-    if (level == 2) return 0.98;
-    if (level == 3) return 0.95;
-    return 0.90;
+    // match TransactionManager rules (3 levels)
+    if (level <= 1) return 1.00; // Silver
+    if (level == 2) return 0.98; // Gold
+    return 0.95;                 // Diamond
 }
 
 void User::updateLevelBySpent() {
-    // 基于 totalSpent 的自动升级规则（可调整）
-    // >= 500 -> level 2
-    // >= 2000 -> level 3
-    // >= 5000 -> level 4
-    if (totalSpent >= 5000) level = max(level, 4);
-    else if (totalSpent >= 2000) level = max(level, 3);
-    else if (totalSpent >= 500) level = max(level, 2);
-    else level = max(level, 1);
+    // 3 levels only. Adjust thresholds if your rubric provides numbers.
+    // Example:
+    // < 500 : Silver
+    // < 2000: Gold
+    // >=2000: Diamond
+    if (totalSpent >= 2000) level = 3;
+    else if (totalSpent >= 500) level = 2;
+    else level = 1;
 }
 
-// -------------------- Checkout (simple) --------------------
+// -------------------- Checkout (via TransactionManager) --------------------
 bool User::checkout(ProductManager& pm) {
-    const auto& cartItems = cart.getItems();
-    if (cartItems.empty()) {
+    if (isAdmin) {
+        cout << "Admin account cannot checkout as a customer." << endl;
+        return false;
+    }
+    if (cart.getItems().empty()) {
         cout << "Checkout failed: cart is empty." << endl;
         return false;
     }
 
-    // 1) check stock for every item (all-or-nothing)
-    for (const auto& [productID, qtyVec] : cartItems) {
-        const Product* p = pm.getProduct(productID);
-        if (!p) {
-            cout << "Checkout failed: product not found, ID=" << productID << endl;
-            return false;
-        }
-        const auto& stock = p->getSizeStock();
-        bool hasSize = p->getHasSize();
+    ensureTxmBound();
 
-        for (int i = 0; i < 6; ++i) {
-            int q = (i < (int)qtyVec.size()) ? qtyVec[i] : 0;
-            if (q <= 0) continue;
+    // ensure latest tx records for this user (filtered total)
+    txm.loadFromFile();
+    double before = txm.getTotalSpent();
 
-            Size sz = static_cast<Size>(i);
-            if (!hasSize && sz != Size::None) {
-                cout << "Checkout failed: product has no size but cart contains sized quantity. ID="
-                     << productID << endl;
-                return false;
-            }
-            if (hasSize && sz == Size::None) {
-                cout << "Checkout failed: sized product but cart contains None quantity. ID="
-                     << productID << endl;
-                return false;
-            }
-            if (q > stock[i]) {
-                cout << "Checkout failed: insufficient stock. ProductID=" << productID
-                     << " size=" << sizeToString(sz)
-                     << " need=" << q << " available=" << stock[i] << endl;
-                return false;
-            }
-        }
-    }
+    bool ok = txm.processTransaction(cart, pm, level, isAdmin);
 
-    // 2) compute total
-    double rawTotal = cart.calculateTotal(pm);
-    double rate = discountRate();
-    double finalTotal = rawTotal * rate;
+    // cart may be cleared or modified; persist
+    saveCartToFile();
 
-    // 3) deduct stock (now safe)
-    for (const auto& [productID, qtyVec] : cartItems) {
-        Product* p = pm.getProduct(productID);
-        if (!p) return false; // should not happen
-        for (int i = 0; i < 6; ++i) {
-            int q = (i < (int)qtyVec.size()) ? qtyVec[i] : 0;
-            if (q <= 0) continue;
-            // updateStock(size, -q)
-            if (!p->updateStock(static_cast<Size>(i), -q)) {
-                cout << "Checkout failed: stock deduction error. ID=" << productID << endl;
-                return false;
-            }
-        }
-    }
+    if (!ok) return false;
 
-    // 4) append a simple transaction record
-    {
-        ofstream tx(transactionFileName(), ios::app);
-        if (tx.is_open()) {
-            tx << "USER=" << userID
-               << " RAW=" << rawTotal
-               << " RATE=" << rate
-               << " FINAL=" << finalTotal
-               << "\n";
-            // 可选：把每个商品也写进去
-            for (const auto& [productID, qtyVec] : cartItems) {
-                tx << "  PID=" << productID;
-                for (int i = 0; i < 6; ++i) {
-                    int q = (i < (int)qtyVec.size()) ? qtyVec[i] : 0;
-                    if (q > 0) tx << " " << sizeToString(static_cast<Size>(i)) << "=" << q;
-                }
-                tx << "\n";
-            }
-        }
-    }
+    // compute delta from tx records
+    double after = txm.getTotalSpent();
+    double delta = after - before;
+    if (delta < 0) delta = 0;
 
-    // 5) update user spent & level, clear cart
-    totalSpent += finalTotal;
+    totalSpent += delta;
     updateLevelBySpent();
 
-    cart.clearCart();
-    saveCartToFile(); // 结算后购物车清空写回
-
-    cout << "Checkout success. raw=" << rawTotal
-         << " discountRate=" << rate
-         << " final=" << finalTotal
-         << " newLevel=" << level << endl;
+    cout << "User totalSpent updated by: " << delta
+         << " -> totalSpent=" << totalSpent
+         << " level=" << levelName(level) << endl;
 
     return true;
 }

@@ -1,3 +1,4 @@
-3
-1|aaa|123123|1|0|0.000000
-2|JimmyFlower|passwd123456|1|0|0.000000
+4
+1|JimmyFlower|passwd123|1|0|199.000000
+2|admin|admin|1|1|0.000000
+3|user2|passwd|2|0|798.000000
