@@ -1,5 +1,5 @@
 8
-1,MenShirt_Eastern,0,0,199,9,20,30,40,50,0
+1,MenShirt_Eastern,0,0,199,10,20,30,40,50,0
 2,MenBoots_Western,0,1,499,0,0,0,0,0,14
 3,WomenDress_Eastern,1,0,299,5,9,8,6,3,0
 4,WomenAccessory_Other,1,2,99,0,0,0,0,0,100
