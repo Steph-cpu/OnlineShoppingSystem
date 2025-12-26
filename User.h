@@ -26,6 +26,9 @@ public:
     ShoppingCart cart;
     TransactionManager txm; // user context filtering
 
+    // Pending admin requests: username|password
+    static vector<pair<string, string>> pendingAdmins;
+
 public:
     User() : txm(0) {}
 
@@ -37,13 +40,19 @@ public:
     static string usersFileName() { return "users.txt"; }
 
     static bool loadAll(vector<User>& users, int& nextUserID, const string& filename = usersFileName());
-    static bool saveAll(const vector<User>& users, int nextUserID, const string& filename = usersFileName());
-
+    static bool saveAll(const vector<User>& users, int nextUserID, const string& filename = usersFileName());    static void createDefaultAdmin(vector<User>& users, int& nextUserID);
     static bool registerUser(vector<User>& users, int& nextUserID,
                              const string& username, const string& password,
                              bool isAdmin = false);
 
     static User* login(vector<User>& users, const string& username, const string& password);
+
+    // Admin approval system
+    static bool requestAdminAccess(const string& username, const string& password);
+    static bool approveAdminRequest(vector<User>& users, int& nextUserID, int requestIndex);
+    static bool rejectAdminRequest(int requestIndex);
+    static void displayPendingRequests();
+    static bool hasPendingRequests() { return !pendingAdmins.empty(); }
 
     // Forgot password
     static bool resetPassword(vector<User>& users,

@@ -1,6 +1,9 @@
 #include "User.h"
 #include <algorithm>
 
+// Initialize static member
+vector<pair<string, string>> User::pendingAdmins;
+
 // -------------------- small utilities --------------------
 vector<string> User::split(const string& s, char delim) {
     vector<string> out;
@@ -64,15 +67,31 @@ string User::toUserLine(const User& u) {
 }
 
 // -------------------- Load / Save all users --------------------
+void User::createDefaultAdmin(vector<User>& users, int& nextUserID) {
+    // Ensure nextUserID starts from at least 2
+    if (nextUserID <= 1) nextUserID = 2;
+
+    // Create default admin with fixed credentials
+    users.emplace_back(1, "admin", "passwd123", 1, true, 0.0);
+    cout << "Default admin account created (username: admin, password: passwd123)" << endl;
+}
 bool User::loadAll(vector<User>& users, int& nextUserID, const string& filename) {
     ifstream fin(filename);
     users.clear();
     nextUserID = 1;
 
-    if (!fin.is_open()) return true;
+    if (!fin.is_open()) {
+        // File doesn't exist, create default admin
+        createDefaultAdmin(users, nextUserID);
+        return true;
+    }
 
     string first;
-    if (!getline(fin, first)) return true;
+    if (!getline(fin, first)) {
+        // Empty file, create default admin
+        createDefaultAdmin(users, nextUserID);
+        return true;
+    }
     if (!first.empty()) {
         try {
             nextUserID = stoi(first);
@@ -86,6 +105,19 @@ bool User::loadAll(vector<User>& users, int& nextUserID, const string& filename)
         auto u = parseUserLine(line);
         if (u.has_value()) users.push_back(*u);
     }
+
+    // Check if default admin exists, if not, add it
+    bool hasDefaultAdmin = false;
+    for (const auto& u : users) {
+        if (u.userID == 1 && u.username == "admin") {
+            hasDefaultAdmin = true;
+            break;
+        }
+    }
+    if (!hasDefaultAdmin) {
+        createDefaultAdmin(users, nextUserID);
+    }
+
     return true;
 }
 
@@ -99,7 +131,71 @@ bool User::saveAll(const vector<User>& users, int nextUserID, const string& file
     for (const auto& u : users) fout << toUserLine(u) << "\n";
     return true;
 }
+// -------------------- Admin Approval System --------------------
+bool User::requestAdminAccess(const string& username, const string& password) {
+    // Check if already requested
+    for (const auto& req : pendingAdmins) {
+        if (req.first == username) {
+            cout << "Admin access already requested for this username." << endl;
+            return false;
+        }
+    }
 
+    pendingAdmins.emplace_back(username, password);
+    cout << "Admin access request submitted. Waiting for approval." << endl;
+    return true;
+}
+
+bool User::approveAdminRequest(vector<User>& users, int& nextUserID, int requestIndex) {
+    if (requestIndex < 0 || requestIndex >= static_cast<int>(pendingAdmins.size())) {
+        cout << "Invalid request index." << endl;
+        return false;
+    }
+
+    auto& request = pendingAdmins[requestIndex];
+    const string& username = request.first;
+    const string& password = request.second;
+
+    // Check if username still available
+    if (usernameExists(users, username)) {
+        cout << "Username '" << username << "' is no longer available." << endl;
+        pendingAdmins.erase(pendingAdmins.begin() + requestIndex);
+        return false;
+    }
+
+    // Create admin user
+    int id = nextUserID++;
+    users.emplace_back(id, username, password, 1, true, 0.0);
+    cout << "Admin request approved. New admin userID=" << id << endl;
+
+    // Remove from pending list
+    pendingAdmins.erase(pendingAdmins.begin() + requestIndex);
+    return true;
+}
+
+bool User::rejectAdminRequest(int requestIndex) {
+    if (requestIndex < 0 || requestIndex >= static_cast<int>(pendingAdmins.size())) {
+        cout << "Invalid request index." << endl;
+        return false;
+    }
+
+    const auto& request = pendingAdmins[requestIndex];
+    cout << "Admin request for '" << request.first << "' rejected." << endl;
+    pendingAdmins.erase(pendingAdmins.begin() + requestIndex);
+    return true;
+}
+
+void User::displayPendingRequests() {
+    if (pendingAdmins.empty()) {
+        cout << "No pending admin requests." << endl;
+        return;
+    }
+
+    cout << "Pending Admin Requests:" << endl;
+    for (size_t i = 0; i < pendingAdmins.size(); ++i) {
+        cout << i << ") Username: " << pendingAdmins[i].first << endl;
+    }
+}
 // -------------------- Register / Login --------------------
 bool User::registerUser(vector<User>& users, int& nextUserID,
                         const string& username, const string& password,
@@ -117,8 +213,13 @@ bool User::registerUser(vector<User>& users, int& nextUserID,
         return false;
     }
 
+    if (isAdmin) {
+        // Request admin access instead of direct registration
+        return requestAdminAccess(username, password);
+    }
+
     int id = nextUserID++;
-    users.emplace_back(id, username, password, 1, isAdmin, 0.0);
+    users.emplace_back(id, username, password, 1, false, 0.0);
     cout << "Register success. userID=" << id << endl;
     return true;
 }
@@ -144,6 +245,13 @@ bool User::resetPassword(vector<User>& users,
         cout << "Reset failed: invalid password (min length 4)." << endl;
         return false;
     }
+
+    // Prevent password reset for default admin
+    if (username == "admin") {
+        cout << "Reset failed: Default admin password cannot be changed." << endl;
+        return false;
+    }
+
     for (auto& u : users) {
         if (u.username == username) {
             u.password = newPassword;

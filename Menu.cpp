@@ -148,7 +148,8 @@ static void adminTransactionsMenu() {
 }
 
 // -------------------- admin menu actions --------------------
-static void adminMenu(ProductManager& pm) {
+// Note: adminMenu now takes additional parameters for user management
+static void adminMenu(ProductManager& pm, vector<User>& users, int& nextUserID) {
     const string productFile = "products.txt";
 
     while (true) {
@@ -165,10 +166,11 @@ static void adminMenu(ProductManager& pm) {
         cout << "10) Update product category/section\n";
         cout << "11) Save products to file\n";
         cout << "12) Load products from file\n";
-        cout << "13) View transaction records (TransactionRecord.txt)\n"; // NEW
+        cout << "13) View transaction records (TransactionRecord.txt)\n";
+        cout << "14) Manage admin requests\n"; // NEW
         cout << "0) Back\n";
 
-        int op = readInt("Choose: ", 0, 13);
+        int op = readInt("Choose: ", 0, 14);
         if (op == 0) return;
 
         switch (op) {
@@ -268,6 +270,35 @@ static void adminMenu(ProductManager& pm) {
             }
             case 13: {
                 adminTransactionsMenu();
+                break;
+            }
+            case 14: {
+                // Manage admin requests
+                while (true) {
+                    cout << "\n===== ADMIN REQUEST MANAGEMENT =====\n";
+                    User::displayPendingRequests();
+                    if (!User::hasPendingRequests()) {
+                        pauseEnter();
+                        break;
+                    }
+                    cout << "\nOptions:\n";
+                    cout << "1) Approve request\n";
+                    cout << "2) Reject request\n";
+                    cout << "0) Back\n";
+
+                    int subOp = readInt("Choose: ", 0, 2);
+                    if (subOp == 0) break;
+
+                    int reqIdx = readInt("Enter request index: ", 0, 100);
+                    bool success = false;
+                    if (subOp == 1) {
+                        success = User::approveAdminRequest(users, nextUserID, reqIdx);
+                        if (success) User::saveAll(users, nextUserID);
+                    } else if (subOp == 2) {
+                        success = User::rejectAdminRequest(reqIdx);
+                    }
+                    if (success) pauseEnter();
+                }
                 break;
             }
             default:
@@ -406,7 +437,7 @@ int main() {
         cout << "1) Register\n";
         cout << "2) Login\n";
         cout << "3) Forgot password\n"; // NEW
-        cout << "4) Admin Login (uses normal login; must be admin)\n";
+        cout << "4) Admin Login\n";
         cout << "5) Save & Exit\n";
 
         int op = readInt("Choose: ", 1, 5);
@@ -414,9 +445,9 @@ int main() {
         if (op == 1) {
             string name = readLine("Username: ");
             string pwd  = readLine("Password (min 4 chars): ");
-            int adminFlag = readInt("Register as admin? (0/1): ", 0, 1);
+            int adminFlag = readInt("Request admin privileges? (0=No, 1=Yes - requires approval): ", 0, 1);
             bool ok = User::registerUser(users, nextUserID, name, pwd, adminFlag == 1);
-            if (ok) User::saveAll(users, nextUserID);
+            if (ok && adminFlag == 0) User::saveAll(users, nextUserID); // Only save immediately for regular users
             pauseEnter();
         }
         else if (op == 2) {
@@ -452,7 +483,7 @@ int main() {
                 pauseEnter();
                 continue;
             }
-            adminMenu(pm);
+            adminMenu(pm, users, nextUserID);
             pm.saveToFile(productFile);
             User::saveAll(users, nextUserID);
             pauseEnter();
