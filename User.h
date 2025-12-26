@@ -40,7 +40,8 @@ public:
     static string usersFileName() { return "users.txt"; }
 
     static bool loadAll(vector<User>& users, int& nextUserID, const string& filename = usersFileName());
-    static bool saveAll(const vector<User>& users, int nextUserID, const string& filename = usersFileName());    static void createDefaultAdmin(vector<User>& users, int& nextUserID);
+    static bool saveAll(const vector<User>& users, int nextUserID, const string& filename = usersFileName());
+	static void createDefaultAdmin(vector<User>& users, int& nextUserID);
     static bool registerUser(vector<User>& users, int& nextUserID,
                              const string& username, const string& password,
                              bool isAdmin = false);
